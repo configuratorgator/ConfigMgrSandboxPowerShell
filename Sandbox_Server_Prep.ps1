@@ -23,10 +23,10 @@ PREREQUISITES:
    one NIC, it will automatically be renamed.
 2) The necessary CABs for .NET 3.5 for the correct version of Windows Server are in the same folder as the script
 3) The SQL Server ISO is in the same folder as the script and is named something like "SQL Server ####.iso"
-4) The SSMS installer is in the same folder as the script and has the default name of SSMS-Setup-ENU.exe
-5) The Windows ADK folder is in the same folder as the script and is named something like "ADK_####"
-6) The Windows ADK folder contains two subfolders named "Core" and "WinPE", which each contain the offline
-   Windows ADK installers for their respective components
+4) The SSMS installer is in the same folder as the script.  
+   The file name should match the one stored in the SSMS_EXE variable (either rename the file or update the variable).
+5) The Windows ADK folder is in the same folder as the script and contains the offline Windows ADK installers for
+   the core Windows ADK and Windows PE.
 7) A folder named ADCSTemplate is in the same folder as the script and contains the ADCSTemplate PowerShell module
 
 RECOMMENDED ENVIRONMENT:
@@ -214,6 +214,7 @@ $MECMAdminsGroupName = "MECM Admins"
 $MECMServersGroupName = "MECM Servers"
 $SQLAdminsGroupName = "SQL Admins"
 $SQLMemoryLimitMB = 8192
+$SSMS_EXE = "SSMS-Setup-ENU.exe"
 $WSUSClassificationsToSync = "Critical Updates","Definition Updates","Feature Packs","Security Updates","Service Packs","Update Rollups","Updates"
 $WSUSProductsToSync = "Windows 10","Windows 10, version 1903 and later"
 
@@ -776,10 +777,17 @@ ElseIf($ConfigMgrPrimaryServer -or $ConfigMgrAdditionalServer)
     }
 
     # Check for the Windows ADK files
-    $ADK_Root = Get-ChildItem | Where-Object{$_.Name -like "ADK_*"} | Select-Object -Expand FullName
-    If($Null -eq $ADK_Root)
+    $ADK_Core_EXE = Get-ChildItem -Filter "adksetup.exe" -Recurse | Select-Object -Expand FullName
+    If($Null -eq $ADK_Core_EXE)
     {
-        $PrereqFailureReason += "Windows ADK files not found"
+        $PrereqFailureReason += "Windows ADK Core setup EXE not found"
+    }
+
+    # Check for the Windows PE ADK files
+    $ADK_WinPE_EXE = Get-ChildItem -Filter "adkwinpesetup.exe" -Recurse | Select-Object -Expand FullName
+    If($Null -eq $ADK_WinPE_EXE)
+    {
+        $PrereqFailureReason += "Windows ADK WinPE setup EXE not found"
     }
 
     # Check for cmtrace.exe
@@ -872,12 +880,12 @@ ElseIf($ConfigMgrPrimaryServer -or $ConfigMgrAdditionalServer)
 
             # Install SSMS
             Write-Host "Installing SSMS..." -ForegroundColor Green
-            .\SSMS-Setup-ENU.exe /install /passive /norestart | Out-String
+            & ".\$SSMS_EXE" /install /passive /norestart | Out-String
 
             # Install WinADK and WinPE
             Write-Host "Installing the Windows ADK and Windows PE..." -ForegroundColor Green
-            & $ADK_Root\Core\adksetup.exe /features OptionId.DeploymentTools OptionId.ImagingAndConfigurationDesigner OptionId.ICDConfigurationDesigner OptionId.UserStateMigrationTool /norestart /quiet /ceip off | Out-String
-            & $ADK_Root\WinPE\adkwinpesetup.exe /features OptionId.WindowsPreinstallationEnvironment /norestart /quiet /ceip off | Out-String
+            & $ADK_Core_EXE /features OptionId.DeploymentTools OptionId.ImagingAndConfigurationDesigner OptionId.ICDConfigurationDesigner OptionId.UserStateMigrationTool /norestart /quiet /ceip off | Out-String
+            & $ADK_WinPE_EXE /features OptionId.WindowsPreinstallationEnvironment /norestart /quiet /ceip off | Out-String
 
             # Restart computer
             Write-Host "Rebooting..." -ForegroundColor Green
@@ -920,7 +928,7 @@ ElseIf($ConfigMgrPrimaryServer -or $ConfigMgrAdditionalServer)
             Write-Host "This could take a while..." -ForegroundColor Green
             New-Item -ItemType Directory -Path D:\ -Name MECM_Setup_Downloads
             & $CMTracePath\cmtrace.exe C:\ConfigMgrSetup.log
-            & $SetupPath\setup.exe /NoUserInput /Script $ScriptRoot\MECM_Setup_Script.ini | Out-String
+            & $SetupPath\setup.exe /NoUserInput /Script $ScriptRoot\ConfigMgr_Setup_Script.ini | Out-String
         }
     }
     Else
